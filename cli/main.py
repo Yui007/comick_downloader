@@ -132,6 +132,36 @@ def main_menu():
             break
 
 @app.command()
+def search(
+    query: str = typer.Argument(..., help="The search query for the manga."),
+    output: str = typer.Option(None, "--output", "-o", help="The base directory to save the downloaded chapters."),
+    chapters: str = typer.Option(None, "--chapters", "-c", help="A string specifying chapters to download (e.g., '1,3-5', 'all').")
+):
+    """
+    Searches for a manga and downloads selected chapters.
+    """
+    scraper = ComickScraper()
+    results = scraper.search_manga(query)
+    if not results:
+        console.print("[bold red]No results found.[/bold red]")
+        return
+
+    console.print("\n[bold yellow]Search Results:[/bold yellow]")
+    for i, res in enumerate(results, 1):
+        console.print(f"{i}: {res['title']}")
+
+    selection = Prompt.ask("\nSelect a manga to download (enter the number)")
+    try:
+        selected_index = int(selection) - 1
+        if 0 <= selected_index < len(results):
+            selected_manga = results[selected_index]
+            download_from_url(selected_manga['url'], output, chapters)
+        else:
+            console.print("[bold red]Invalid selection.[/bold red]")
+    except ValueError:
+        console.print("[bold red]Invalid input. Please enter a number.[/bold red]")
+
+@app.command()
 def main(
     url: str = typer.Argument(None, help="The URL of the Comick.io manga or chapter."),
     output: str = typer.Option(None, "--output", "-o", help=f"The base directory to save the downloaded chapters."),
