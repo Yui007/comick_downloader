@@ -1,5 +1,6 @@
 # core/scraper.py
 import re
+from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 import cloudscraper
 import requests
 from playwright.sync_api import sync_playwright
@@ -45,8 +46,8 @@ class ComickScraper:
 
             page = context.new_page()
             print(f"🌐 Visiting: {chapter_url}")
-            page.goto(chapter_url, wait_until="load", timeout=60000)
-            page.wait_for_timeout(5000)  # Wait for dynamic content
+            page.goto(chapter_url, wait_until="load", timeout=5000)
+            page.wait_for_timeout(3000)  # Wait for dynamic content
 
             print("📸 Extracting image URLs...")
             img_elements = page.query_selector_all('img[src*="meo.comick.pictures"]')
@@ -59,7 +60,7 @@ class ComickScraper:
 
     def fetch_chapter_list(self, manga_url: str) -> list[dict]:
         """
-        Fetches the list of chapters from a manga's main page.
+        Fetches the list of chapters from a manga's main page, handling pagination.
 
         Args:
             manga_url: The URL of the manga's main page.
@@ -70,29 +71,47 @@ class ComickScraper:
         """
         print("📚 Fetching chapter list...")
         chapters = {}
+        page_num = 1
+        
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
+            browser = p.chromium.launch(headless=False)
             page = browser.new_page()
             
-            current_url = manga_url
-            while current_url:
-                try:
-                    print(f"🌐 Visiting: {current_url}")
-                    page.goto(current_url, wait_until="load", timeout=60000)
-                    # Wait for chapter links to be visible
-                    page.wait_for_selector('a[href*="/comic/"][href*="chapter"]', timeout=60000)
-                    page.wait_for_timeout(2000)
+            while True:
+                # Construct URL with page number
+                parts = urlparse(manga_url)
+                query = parse_qs(parts.query)
+                query['page'] = page_num
+                new_query = urlencode(query, doseq=True)
+                # Remove fragment and update query
+                current_url = urlunparse(parts._replace(query=new_query, fragment=''))
 
+                print(f"🌐 Visiting page {page_num}: {current_url}")
+                
+                try:
+                    page.goto(current_url, wait_until="networkidle", timeout=5000)
+                    # Wait for chapter links to be visible
+                    page.wait_for_selector('a[href*="/comic/"][href*="chapter"]', timeout=5000)
+                except Exception:
+                    # This can happen if the page doesn't exist or has no chapters, which is our exit condition
+                    print(f"✅ No more chapters found on page {page_num}. Assuming end of list.")
+                    break
+
+                try:
                     # Scroll to the bottom of the page to load all chapters
                     page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                    page.wait_for_timeout(10000)  # Wait for dynamic content to load after scrolling
+                    page.wait_for_timeout(3000)  # Wait for dynamic content
 
                     content = page.content()
                     soup = BeautifulSoup(content, 'html.parser')
                     
-                    # Based on the user-provided HTML, we select the table rows
                     chapter_rows = soup.select('tr.group')
 
+                    if not chapter_rows:
+                        print(f"✅ No chapters found on page {page_num}. Finalizing list.")
+                        break # Exit condition: no more chapters on the page
+
+                    new_chapters_found_on_page = 0
                     for row in chapter_rows:
                         link_element = row.select_one('a[href*="/comic/"][href*="chapter"]')
                         if not link_element:
@@ -102,44 +121,42 @@ class ComickScraper:
                         if not title_span:
                             continue
 
-                        # Use the 'title' attribute for the full chapter name
                         title = title_span.get('title', title_span.text.strip())
                         url = link_element['href']
 
-                        # Find all group names within the row
                         group_links = row.select('a[href*="/group/"]')
                         group_names = [g.text.strip() for g in group_links]
                         
                         if group_names:
-                            title = f"{title} [{', '.join(group_names)}]"
+                            title = f"{title} ({', '.join(group_names)})"
 
                         if not url.startswith('http'):
                             url = f"{BASE_URL}{url}"
 
-                        match = re.search(r'Chapter\s*([\d.]+)', title)
+                        match = re.search(r'Chapter\s*([\d.]+)', title, re.IGNORECASE)
                         if match:
                             chapter_num = float(match.group(1))
                             if chapter_num not in chapters:
                                 chapters[chapter_num] = {"title": title, "url": url}
+                                new_chapters_found_on_page += 1
+                    
+                    if new_chapters_found_on_page == 0 and page_num > 1:
+                        print(f"✅ No new chapters on page {page_num}. Assuming end of list.")
+                        break
 
-                    # Find the "Next" button using a more reliable selector
-                    next_button = soup.select_one('nav[aria-label="pagination"] a:last-child')
-                    if next_button and "Next" in next_button.text and next_button.has_attr('href'):
-                        next_page_path = next_button['href']
-                        current_url = f"{BASE_URL}{next_page_path}"
-                    else:
-                        current_url = None
+                    print(f"Found {new_chapters_found_on_page} new chapters on page {page_num}.")
+                    page_num += 1
 
                 except Exception as e:
-                    print(f"❌ Failed to fetch with Playwright: {e}")
-                    current_url = None # Exit loop on error
+                    print(f"❌ An error occurred while processing page {page_num}: {e}")
+                    break # Exit loop on error
             
             browser.close()
 
         # Sort chapters by chapter number
         sorted_chapters = [chapters[key] for key in sorted(chapters.keys())]
         
-        print(f"🔍 Found {len(sorted_chapters)} unique chapters.")
+        print(f"🔍 Found a total of {len(sorted_chapters)} unique chapters.")
         return sorted_chapters
 
     def search_manga(self, query: str) -> list[dict]:
@@ -159,8 +176,8 @@ class ComickScraper:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
             try:
-                page.goto(search_url, wait_until="load", timeout=60000)
-                page.wait_for_timeout(5000) # Wait for dynamic content
+                page.goto(search_url, wait_until="load", timeout=5000)
+                page.wait_for_timeout(3000) # Wait for dynamic content
                 content = page.content()
             except Exception as e:
                 print(f"❌ Failed to fetch with Playwright: {e}")

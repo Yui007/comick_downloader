@@ -80,7 +80,7 @@ def download_from_url(url: str, output: str | None, chapters_str: str | None):
                 image_urls, user_agent = scraper.fetch_image_urls(chap['url'])
                 if image_urls:
                     sanitized_title = sanitize_filename(chap['title'])
-                    chapter_output_dir = os.path.join(base_output_dir, f"Chapter-{i}_{sanitized_title}")
+                    chapter_output_dir = os.path.join(base_output_dir, sanitized_title)
                     downloader.download_images(image_urls, chapter_output_dir, user_agent, chap['url'])
                 else:
                     console.print(f"[bold red]Could not find any images for Chapter {i}.[/bold red]")
