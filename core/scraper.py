@@ -46,8 +46,22 @@ class ComickScraper:
 
             page = context.new_page()
             print(f"🌐 Visiting: {chapter_url}")
-            page.goto(chapter_url, wait_until="load", timeout=20000)
-            page.wait_for_timeout(5000)  # Wait for dynamic content
+            
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    page.goto(chapter_url, wait_until="load", timeout=30000) # Increased timeout to 30 seconds
+                    page.wait_for_timeout(5000)  # Wait for dynamic content
+                    break # If successful, break the retry loop
+                except Exception as e:
+                    print(f"⚠️ Attempt {attempt + 1}/{max_retries} failed for {chapter_url}: {e}")
+                    if attempt < max_retries - 1:
+                        print("Retrying in 5 seconds...")
+                        page.wait_for_timeout(5000) # Wait before retrying
+                    else:
+                        print(f"❌ All {max_retries} attempts failed for {chapter_url}.")
+                        browser.close()
+                        return [], "" # Return empty on final failure
 
             print("📸 Extracting image URLs...")
             img_elements = page.query_selector_all('img[src*="meo.comick.pictures"]')
