@@ -68,7 +68,7 @@ def _download_single_chapter_task(scraper: ComickScraper, downloader: Downloader
     finally:
         progress.update(chapter_task_id, advance=1) # Ensure chapter task advances even on error
 
-def download_from_url(url: str, output: str | None, chapters_str: str | None, convert_to_pdf: bool, delete_images_after_pdf: bool):
+def download_from_url(url: str, output: str | None, chapters_str: str | None, convert_to_pdf: bool, delete_images_after_pdf: bool, threads: int = 10):
     """Handles the logic for downloading from a given URL."""
     # Remove URL fragment if it exists
     url = url.split('#')[0]
@@ -141,7 +141,7 @@ def download_from_url(url: str, output: str | None, chapters_str: str | None, co
         ) as progress:
             main_chapter_task = progress.add_task("[bold green]Overall Chapter Progress", total=len(chapters_to_download))
 
-            with ThreadPoolExecutor(max_workers=10) as executor: # Threading for chapters
+            with ThreadPoolExecutor(max_workers=threads) as executor: # Threading for chapters
                 futures = []
                 for chap in chapters_to_download:
                     # Pass the chapter index for logging purposes, not for direct list access
@@ -176,7 +176,13 @@ def main_menu():
             delete_imgs = False
             if convert_pdf:
                 delete_imgs = Prompt.ask("Delete images after PDF conversion? (y/n)", choices=["y", "n"], default="n").lower() == 'y'
-            download_from_url(url, output or None, None, convert_pdf, delete_imgs)
+            threads_input = Prompt.ask("Enter number of concurrent threads (default: 10)", default="10")
+            try:
+                threads = int(threads_input)
+            except ValueError:
+                console.print("[bold red]Invalid input for threads. Using default of 10.[/bold red]")
+                threads = 10
+            download_from_url(url, output or None, None, convert_pdf, delete_imgs, threads)
         elif choice == "2":
             query = Prompt.ask("Enter the name of the manga to search for")
             results = scraper.search_manga(query)
@@ -197,7 +203,13 @@ def main_menu():
                     delete_imgs = False
                     if convert_pdf:
                         delete_imgs = Prompt.ask("Delete images after PDF conversion? (y/n)", choices=["y", "n"], default="n").lower() == 'y'
-                    download_from_url(selected_manga['url'], None, None, convert_pdf, delete_imgs)
+                    threads_input = Prompt.ask("Enter number of concurrent threads (default: 10)", default="10")
+                    try:
+                        threads = int(threads_input)
+                    except ValueError:
+                        console.print("[bold red]Invalid input for threads. Using default of 10.[/bold red]")
+                        threads = 10
+                    download_from_url(selected_manga['url'], None, None, convert_pdf, delete_imgs, threads)
                 else:
                     console.print("[bold red]Invalid selection.[/bold red]")
             except ValueError:
@@ -243,12 +255,13 @@ def download_command(
     output: str = typer.Option(None, "--output", "-o", help=f"The base directory to save the downloaded chapters."),
     chapters: str = typer.Option(None, "--chapters", "-c", help="A string specifying chapters to download (e.g., '1,3-5', 'all')."),
     pdf: bool = typer.Option(False, "--pdf", "-p", help="Convert downloaded images to PDF."),
-    delete_images_after_pdf: bool = typer.Option(False, "--delete-images", "-d", help="Delete images after PDF conversion.")
+    delete_images_after_pdf: bool = typer.Option(False, "--delete-images", "-d", help="Delete images after PDF conversion."),
+    threads: int = typer.Option(10, "--threads", "-t", help="Number of concurrent download threads (default: 10).")
 ):
     """
     Downloads manga chapters from Comick.io directly via arguments.
     """
-    download_from_url(url, output, chapters, pdf, delete_images_after_pdf)
+    download_from_url(url, output, chapters, pdf, delete_images_after_pdf, threads)
 
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context):
