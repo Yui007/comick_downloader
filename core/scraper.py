@@ -172,32 +172,60 @@ class ComickScraper:
         """
         search_url = f"{BASE_URL}/search?q={query}"
         print(f"🔍 Searching for: {query}")
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-            try:
-                page.goto(search_url, wait_until="load", timeout=5000)
-                page.wait_for_timeout(3000) # Wait for dynamic content
-                content = page.content()
-            except Exception as e:
-                print(f"❌ Failed to fetch with Playwright: {e}")
-                return []
-            finally:
-                browser.close()
 
-        soup = BeautifulSoup(content, 'html.parser')
-        
-        results = []
-        # This selector is more specific to the search results page structure
-        for el in soup.select('div.flex.items-center > a[href*="/comic/"]'):
-            title_div = el.find('div', class_='font-bold')
-            if title_div:
-                title = title_div.text.strip()
-                url = el.get('href')
-                if title and url:
-                    if not url.startswith('http'):
-                        url = f"{BASE_URL}{url}"
-                    results.append({"title": title, "url": url})
+        print("🚀 Getting Cloudflare cookies using cloudscraper...")
+        try:
+            resp = self.scraper.get(search_url)
+            resp.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Failed to fetch with cloudscraper: {e}")
+            return []
+
+        cookies = self.scraper.cookies.get_dict()
+        user_agent = self.scraper.headers["User-Agent"]
+
+        print("🧭 Launching Playwright with Cloudflare cookies...")
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=False)
+            context = browser.new_context(user_agent=user_agent)
+
+            cookie_list = [{"name": k, "value": v, "domain": "comick.io", "path": "/"} for k, v in cookies.items()]
+            context.add_cookies(cookie_list)
+
+            page = context.new_page()
+            print(f"🌐 Visiting: {search_url}")
+            page.goto(search_url, wait_until="networkidle")
+            
+            results = []
+            last_height = page.evaluate("document.body.scrollHeight")
+            
+            while True:
+                # Scroll down
+                page.evaluate("window.scrollBy(0, 500)") # Scroll by 500px
+                page.wait_for_timeout(1000)
+
+                # Parse content
+                content = page.content()
+                soup = BeautifulSoup(content, 'html.parser')
+                
+                for link_element in soup.select('a[href*="/comic/"]'):
+                    title_element = link_element.find('p', class_='font-bold')
+                    if title_element:
+                        title = title_element.text.strip()
+                        url = link_element['href']
+                        if title and url:
+                            if not url.startswith('http'):
+                                url = f"{BASE_URL}{url}"
+                            # Avoid duplicates
+                            if not any(d.get('url') == url for d in results):
+                                 results.append({"title": title, "url": url})
+
+                # Check if we've reached the bottom
+                new_height = page.evaluate("document.body.scrollHeight")
+                if page.evaluate("window.pageYOffset + window.innerHeight") >= new_height:
+                    break
+            
+            browser.close()
         
         print(f"🔍 Found {len(results)} results.")
         return results

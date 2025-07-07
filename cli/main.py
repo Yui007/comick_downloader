@@ -1,4 +1,7 @@
 # cli/main.py
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import typer
 from rich.console import Console
 from rich.prompt import Prompt
