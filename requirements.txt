@@ -1,0 +1,9 @@
+cloudscraper
+playwright
+beautifulsoup4
+requests
+aiohttp
+rich
+typer
+PyQt6
+pytest
