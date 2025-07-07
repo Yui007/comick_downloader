@@ -46,8 +46,8 @@ class ComickScraper:
 
             page = context.new_page()
             print(f"🌐 Visiting: {chapter_url}")
-            page.goto(chapter_url, wait_until="load", timeout=5000)
-            page.wait_for_timeout(3000)  # Wait for dynamic content
+            page.goto(chapter_url, wait_until="load", timeout=20000)
+            page.wait_for_timeout(5000)  # Wait for dynamic content
 
             print("📸 Extracting image URLs...")
             img_elements = page.query_selector_all('img[src*="meo.comick.pictures"]')
