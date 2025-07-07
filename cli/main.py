@@ -35,6 +35,8 @@ def parse_chapter_selection(selection: str, max_chapters: int) -> list[int]:
 
 def download_from_url(url: str, output: str | None, chapters_str: str | None):
     """Handles the logic for downloading from a given URL."""
+    # Remove URL fragment if it exists
+    url = url.split('#')[0]
     console.print("[bold cyan]MangaScraper for Comick.io[/bold cyan]")
     
     scraper = ComickScraper()
