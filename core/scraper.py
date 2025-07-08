@@ -91,6 +91,9 @@ class ComickScraper:
             browser = p.chromium.launch(headless=False)
             page = browser.new_page()
             
+            # Set a default timeout for all page operations
+            page.set_default_timeout(30000) # 30 seconds
+
             while True:
                 # Construct URL with page number
                 parts = urlparse(manga_url)
@@ -103,10 +106,15 @@ class ComickScraper:
                 print(f"🌐 Visiting page {page_num}: {current_url}")
                 
                 try:
-                    page.goto(current_url, wait_until="networkidle", timeout=5000)
+                    print(f"Navigating to {current_url}...")
+                    page.goto(current_url, wait_until="domcontentloaded")
+                    print("Page loaded. Waiting for chapter selector...")
                     # Wait for chapter links to be visible
-                    page.wait_for_selector('a[href*="/comic/"][href*="chapter"]', timeout=5000)
-                except Exception:
+                    page.wait_for_selector('a[href*="/comic/"][href*="chapter"]', state="visible")
+                    print("Chapter selector found.")
+                    page.wait_for_timeout(3000) # Extra wait for dynamic content
+                except Exception as e:
+                    print(f"Exception during navigation or selector wait: {e}")
                     # This can happen if the page doesn't exist or has no chapters, which is our exit condition
                     print(f"✅ No more chapters found on page {page_num}. Assuming end of list.")
                     break

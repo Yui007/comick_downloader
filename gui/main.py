@@ -1,5 +1,6 @@
 import sys
 import os
+import re
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                              QLineEdit, QPushButton, QListWidget, QLabel, QProgressBar,
@@ -108,8 +109,15 @@ class MangaDownloaderGUI(QWidget):
         self.chapters_list.clear()
 
         if "comick.io/comic/" in query:
-            self.results_list.addItem(f"Fetching chapters from URL...")
-            self.controller.fetch_chapters_from_url(query)
+            # This regex is a bit more robust for identifying chapter URLs
+            if re.search(r"/(c\d+|chapter-[\w-]+)", query):
+                self.results_list.addItem(f"Directly downloading chapter from URL...")
+                convert_to_pdf = self.pdf_checkbox.isChecked()
+                delete_images = self.delete_images_checkbox.isChecked()
+                self.controller.download_single_chapter_from_url(query, self.output_dir, convert_to_pdf, delete_images)
+            else:
+                self.results_list.addItem(f"Fetching chapters from URL...")
+                self.controller.fetch_chapters_from_url(query)
         else:
             self.results_list.addItem("Searching...")
             self.controller.start_search(query)

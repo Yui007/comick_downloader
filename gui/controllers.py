@@ -3,6 +3,8 @@ from core.scraper import ComickScraper
 from core.downloader import Downloader
 import os
 from utils.sanitizer import sanitize_filename
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 class Worker(QObject):
     finished = pyqtSignal(object)
@@ -86,29 +88,58 @@ class GuiController(QObject):
 
     def _perform_download(self, chapters, output_dir, convert_to_pdf, delete_images):
         total_chapters = len(chapters)
-        for i, chapter in enumerate(chapters):
-            print(f"Downloading chapter {i+1}/{total_chapters}: {chapter['title']}")
-            
-            # Sanitize chapter title for folder name
-            chapter_folder_name = sanitize_filename(chapter['title'])
-            chapter_output_dir = os.path.join(output_dir, chapter_folder_name)
+        completed_chapters = 0
+        progress_lock = threading.Lock()
 
-            image_urls, user_agent = self.scraper.fetch_image_urls(chapter['url'])
-            if image_urls:
-                self.downloader.download_images(image_urls, chapter_output_dir, user_agent, chapter['url'])
+        def _download_chapter_worker(chapter):
+            nonlocal completed_chapters
+            try:
+                print(f"Downloading chapter: {chapter['title']}")
                 
-                if convert_to_pdf:
-                    pdf_path = os.path.join(output_dir, f"{chapter_folder_name}.pdf")
-                    self.downloader.convert_to_pdf(chapter_output_dir, pdf_path)
-                    if delete_images:
-                        self.downloader.delete_images(chapter_output_dir)
-                        os.rmdir(chapter_output_dir)
+                chapter_folder_name = sanitize_filename(chapter['title'])
+                chapter_output_dir = os.path.join(output_dir, chapter_folder_name)
 
-            progress = int(((i + 1) / total_chapters) * 100)
-            self.downloadProgress.emit(progress)
-        
-        return output_dir # Return the main output directory
+                image_urls, user_agent = self.scraper.fetch_image_urls(chapter['url'])
+                if image_urls:
+                    self.downloader.download_images(image_urls, chapter_output_dir, user_agent, chapter['url'])
+                    
+                    if convert_to_pdf:
+                        pdf_path = os.path.join(output_dir, f"{chapter_folder_name}.pdf")
+                        self.downloader.convert_to_pdf(chapter_output_dir, pdf_path)
+                        if delete_images:
+                            self.downloader.delete_images(chapter_output_dir)
+                            os.rmdir(chapter_output_dir)
+            except Exception as e:
+                print(f"Error downloading chapter {chapter.get('title', 'N/A')}: {e}")
+            finally:
+                with progress_lock:
+                    completed_chapters += 1
+                    progress = int((completed_chapters / total_chapters) * 100)
+                    self.downloadProgress.emit(progress)
+
+        with ThreadPoolExecutor(max_workers=10) as executor: # 5 chapters at a time
+            futures = [executor.submit(_download_chapter_worker, chapter) for chapter in chapters]
+            for future in as_completed(futures):
+                future.result() # Wait for all to complete and raise exceptions if any
+
+        return output_dir
 
     def on_download_finished(self, output_dir):
         print("Controller: Download finished.")
         self.downloadFinished.emit(output_dir)
+
+    @pyqtSlot(str, str, bool, bool)
+    def download_single_chapter_from_url(self, url, output_dir, convert_to_pdf, delete_images):
+        """Downloads a single chapter directly from a URL."""
+        print(f"Controller: Downloading single chapter from {url}")
+        self._run_in_thread(self._perform_single_download, self.on_download_finished, url, output_dir, convert_to_pdf, delete_images)
+
+    def _perform_single_download(self, url, output_dir, convert_to_pdf, delete_images):
+        """Helper method to download a single chapter."""
+        # Create a mock chapter object for the downloader
+        # A bit of a hack, but it lets us reuse the existing download logic
+        chapter_title = url.split("/")[-1] # Simple title extraction
+        chapter = {"title": chapter_title, "url": url}
+        
+        self._perform_download([chapter], output_dir, convert_to_pdf, delete_images)
+        return output_dir
