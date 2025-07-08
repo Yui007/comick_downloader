@@ -110,7 +110,7 @@ class MangaDownloaderGUI(QWidget):
 
         if "comick.io/comic/" in query:
             # This regex is a bit more robust for identifying chapter URLs
-            if re.search(r"/(c\d+|chapter-[\w-]+)", query):
+            if re.search(r"/(c\d+|[\w-]+-chapter-[\w-]+)", query):
                 self.results_list.addItem(f"Directly downloading chapter from URL...")
                 convert_to_pdf = self.pdf_checkbox.isChecked()
                 delete_images = self.delete_images_checkbox.isChecked()
