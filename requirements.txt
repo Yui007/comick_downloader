@@ -6,4 +6,4 @@ aiohttp
 rich
 typer
 PyQt6
-pytest
+Pillow
