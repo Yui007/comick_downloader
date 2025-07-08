@@ -117,7 +117,7 @@ class GuiController(QObject):
                     progress = int((completed_chapters / total_chapters) * 100)
                     self.downloadProgress.emit(progress)
 
-        with ThreadPoolExecutor(max_workers=10) as executor: # 5 chapters at a time
+        with ThreadPoolExecutor(max_workers=5) as executor: # 5 chapters at a time
             futures = [executor.submit(_download_chapter_worker, chapter) for chapter in chapters]
             for future in as_completed(futures):
                 future.result() # Wait for all to complete and raise exceptions if any
